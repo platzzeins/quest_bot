@@ -30,12 +30,12 @@ async def main():
     async def game(message):
         """Function to start the game"""
         global STATUS
+        STATUS = "game"
         try:
             await bot.delete_message(message.chat.id, message.message_id - 1)
         except telebot.apihelper.ApiTelegramException:
             print("We got an error, captain!")
         finally:
-            STATUS = "game"
             word = database.get_question()
             database.set_last_word(message.from_user.id, word)
             create_img.img_cr(word.title())
@@ -78,8 +78,11 @@ async def main():
             await game(message)
         else:
             await bot.send_message(message.chat.id, text="Type /start or /info")
-    await AsyncTeleBot.infinity_polling(bot)
+    await AsyncTeleBot.polling(bot)
 
-asyncio.run(main())
+
+if __name__ == "__main__":
+    while True:
+        asyncio.run(main())
 
 #DeFakto
