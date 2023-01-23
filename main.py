@@ -1,81 +1,85 @@
-# import random
+"""Importing asyncio, telebot modules
+and database.py, translator.py, create_img.py files as modules"""
+import asyncio
 import telebot
-import exec
-from telebot import types
-
-import connection
-import parse_ua
+from telebot.async_telebot import AsyncTeleBot
+import database
+import translator
 import token_bot
-import request_db
 import create_img
 
-bot = telebot.TeleBot(token_bot.token)
+bot = AsyncTeleBot(token_bot.token)
 
-status = ""
-question_number = 0
-questions_list = []
-# word = exec.get_question()
-word = ""
-id_to_del = 0
+STATUS = ""
 
 
-@bot.message_handler(commands=["start"])
-def start(message):
-    """Start function, when user sends '/start'"""
-    global status
-    # request_db.connect()
-    status = "username"
-    if connection.check_userid(message.from_user.id):
-        bot.send_message(message.chat.id, "Start game or check your information")
-    else:
-        bot.send_message(message.chat.id, text="To play, you need to register first! Type your Username")
-    # bot.send_message(message.chat.id, text="Hello, enter your Username")
-
-
-def create_card(message):
-    global status, word
-    try:
-        bot.delete_message(message.chat.id, message.message_id - 1)
-    except telebot.apihelper.ApiTelegramException:
-        print("Smth")
-    finally:
-        status = "game"
-        word = exec.get_question()
-        create_img.img_cr(word.title())
-        bot.send_photo(message.chat.id, open("img_done.png", "rb"), "Guess translation!")
-    # bot.send_message(message.chat.id, text=word)
-
-
-@bot.message_handler(commands=["startgame"])
-def start_game(message):
-    global status
-    create_card(message)
-
-
-@bot.message_handler(content_types=["text"])
-def respond(message):
-    """Functions for responses for user messages"""
-    global status
-    if status == "username":
-        if not connection.check_userid(message.from_user.id):
-            status = ""
-            print(message.from_user.id)
-            connection.registration(message.from_user.id, message.text)
-            bot.send_message(message.chat.id, text="Thank you for the registration")
+async def main():
+    """Function main"""
+    @bot.message_handler(commands=["start"])
+    async def start(message):
+        """Start function, when user sends '/start'"""
+        global STATUS
+        STATUS = "username"
+        if database.check_userid(message.from_user.id):
+            await bot.send_message(message.chat.id, "Start game or check your information")
         else:
-            username = connection.get_username(message.from_user.id)
-            bot.send_message(message.chat.id, text=f"You already registered\nYour username --- {username}")
-        # name = message.from_user.id
-    elif status == "game":
-        trans_answer = str(exec.get_translation(message.text))
-        if word.lower() in trans_answer.lower():
-            exec.add_mark(message.from_user.id)
-            bot.send_message(message.chat.id, text="Right!")
+            await bot.send_message(message.chat.id,
+                                   text="To play, you need to register first! Type your Username")
+
+    @bot.message_handler(commands=["startgame"])
+    async def game(message):
+        """Function to start the game"""
+        global STATUS
+        try:
+            await bot.delete_message(message.chat.id, message.message_id - 1)
+        except telebot.apihelper.ApiTelegramException:
+            print("We got an error, captain!")
+        finally:
+            STATUS = "game"
+            word = database.get_question()
+            database.set_last_word(message.from_user.id, word)
+            create_img.img_cr(word.title())
+            with open("Images/img_done.png", "rb") as img:
+                await bot.send_photo(message.chat.id, img, "Guess translation!")
+
+    @bot.message_handler(commands=["info"])
+    async def info(message):
+        """Function to send info about user"""
+        info_list = database.info(message.from_user.id)
+        await bot.send_message(message.chat.id,
+                               text=f"Information about you:\n"
+                                    f"Username - {info_list[2]}\n"
+                                    f"Tasks completed successfully - {info_list[3]} ")
+
+    @bot.message_handler(content_types=["text"])
+    async def respond(message):
+        """Functions for responses for user messages"""
+        global STATUS
+        if STATUS == "username":
+            if not database.check_userid(message.from_user.id):
+                STATUS = ""
+                database.registration(message.from_user.id, message.text)
+                await bot.send_message(message.chat.id, text="Thank you for the registration")
+            else:
+                username = database.get_username(message.from_user.id)
+                await bot.send_message(message.chat.id,
+                                       text=f"You already registered\nYour username --- {username}")
+        elif STATUS == "game":
+            user_answer = str(translator.get_translation(message.text)).lower()
+            right_answer = database.get_last_word(message.from_user.id).lower()
+            if right_answer in user_answer:
+                database.add_mark(message.from_user.id)
+                await bot.send_message(message.chat.id, text="Right!")
+            else:
+                answers = translator.get_back_translation(right_answer)
+                await bot.send_message(message.chat.id,
+                                       text=f"Wrong!\n"
+                                            f"Right answer is '{answers[0]}' or '{answers[1]}'")
+            await game(message)
         else:
-            bot.send_message(message.chat.id, text="Wrong!")
-        create_card(message)
+            await bot.send_message(message.chat.id, text="Type /start or /info")
+    await AsyncTeleBot.infinity_polling(bot)
 
+asyncio.run(main())
 
-bot.polling()
-
-
+#DeFakto
